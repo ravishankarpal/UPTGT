@@ -1,0 +1,5 @@
+google-generativeai
+requests
+beautifulsoup4
+feedparser
+xhtml2pdf
