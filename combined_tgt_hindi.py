@@ -17,8 +17,8 @@ TODAY_STR = datetime.now().strftime("%d %B %Y")
 HTML_FILENAME = f"UP_TGT_Hindi_Notes_{datetime.now().strftime('%Y%m%d')}.html"
 
 # ----------------- Gemini Model Config -----------------
-PRIMARY_MODEL = "gemini-1.5-flash"
-FALLBACK_MODEL = "gemini-1.5-flash-8b"
+PRIMARY_MODEL = "gemini-3.8-flash"
+FALLBACK_MODEL = "gemini-3-flash-preview"
 MAX_RETRIES = 3
 RETRY_DELAY_SECONDS = 20
 
