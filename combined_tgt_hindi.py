@@ -9,6 +9,7 @@ import requests
 from xhtml2pdf import pisa
 import google.generativeai as genai
 
+
 # ----------------- Environment Configuration -----------------
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GMAIL_USER = os.environ.get("GMAIL_USER")
