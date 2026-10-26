@@ -9,7 +9,6 @@ import requests
 from xhtml2pdf import pisa
 import google.generativeai as genai
 
-
 # ----------------- Environment Configuration -----------------
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GMAIL_USER = os.environ.get("GMAIL_USER")
@@ -22,13 +21,13 @@ FONT_FILENAME = "NotoSansDevanagari-Regular.ttf"
 
 # ----------------- Gemini Model Config -----------------
 PRIMARY_MODEL = "gemini-3.8-flash"
-
+FALLBACK_MODEL = "gemini-3-flash-preview"
 MAX_RETRIES = 3
-RETRY_DELAY_SECONDS = 20
+RETRY_DELAY_SECONDS = 20  # backs off: 20s, 40s, 60s
 
 
 def download_hindi_font():
-    """Downloads a Devanagari TTF font so xhtml2pdf can render Hindi characters instead of square boxes."""
+    """Downloads a Devanagari TTF font so xhtml2pdf can render Hindi characters."""
     if not os.path.exists(FONT_FILENAME):
         font_url = "https://raw.githubusercontent.com/googlefonts/noto-fonts/main/hinted/ttf/NotoSansDevanagari/NotoSansDevanagari-Regular.ttf"
         response = requests.get(font_url)
@@ -48,13 +47,11 @@ def fetch_combined_feeds() -> str:
 
     raw_articles = []
 
-    # Fetch top 6 from The Hindu
     for url in hindu_urls:
         feed = feedparser.parse(url)
         for entry in feed.entries[:6]:
             raw_articles.append(f"[The Hindu] Title: {entry.title}\nSummary: {entry.get('summary', '')}\n")
 
-    # Fetch top 10 from PIB
     for url in pib_urls:
         feed = feedparser.parse(url)
         for entry in feed.entries[:10]:
@@ -65,7 +62,7 @@ def fetch_combined_feeds() -> str:
 
 def generate_structured_notes(raw_content: str) -> str:
     if not GEMINI_API_KEY:
-        print("ERROR: GEMINI_API_KEY is missing.")
+        print("ERROR: GEMINI_API_KEY is missing. Check your GitHub Secrets.")
         sys.exit(1)
 
     genai.configure(api_key=GEMINI_API_KEY)
@@ -96,21 +93,37 @@ Raw News:
 {raw_content}
 """
 
-    model = genai.GenerativeModel(PRIMARY_MODEL)
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            response = model.generate_content(prompt)
-            return response.text
-        except Exception as e:
-            err_str = str(e)
-            if "503" in err_str or "UNAVAILABLE" in err_str or "429" in err_str:
-                wait = RETRY_DELAY_SECONDS * attempt
-                print(f"Attempt {attempt}/{MAX_RETRIES} failed. Retrying in {wait}s...")
-                time.sleep(wait)
-            else:
-                print(f"ERROR calling Gemini API: {err_str}")
-                sys.exit(1)
-    return ""
+    def try_generate(model_name: str):
+        model = genai.GenerativeModel(model_name)
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                response = model.generate_content(prompt)
+                return response.text
+            except Exception as e:
+                err_str = str(e)
+                if "503" in err_str or "UNAVAILABLE" in err_str or "429" in err_str:
+                    wait = RETRY_DELAY_SECONDS * attempt
+                    print(f"[{model_name}] Attempt {attempt}/{MAX_RETRIES} failed "
+                          f"({err_str[:120]}...). Retrying in {wait}s...")
+                    time.sleep(wait)
+                else:
+                    print(f"ERROR calling Gemini API ({model_name}): {err_str}")
+                    return None
+        return None
+
+    print(f"Trying primary model: {PRIMARY_MODEL}")
+    result = try_generate(PRIMARY_MODEL)
+
+    if result is None:
+        print(f"Primary model failed after {MAX_RETRIES} attempts. "
+              f"Falling back to {FALLBACK_MODEL}...")
+        result = try_generate(FALLBACK_MODEL)
+
+    if result is None:
+        print("ERROR: Both primary and fallback models failed.")
+        sys.exit(1)
+
+    return result
 
 
 def build_full_html(body_content: str) -> str:
